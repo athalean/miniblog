@@ -1,20 +1,28 @@
 import os
 
+from werkzeug.utils import redirect
 from werkzeug.wrappers import Response, Request
 from werkzeug.serving import run_simple
 
-from miniblog.miniblog import PageTree
+from miniblog import SiteNamespace
 
 
 DIR = os.getcwd()
 
 
 class MiniblogServer(object):
-    def __init__(self, path):
-        self.tree = PageTree(path)
+    def __init__(self, content_folder, template_folder):
+        self.tree = SiteNamespace(content_folder, template_folder)
 
     def dispatch(self, request):
-        return Response("yo " + DIR)
+        if not request.path.endswith('/'):
+            return redirect(request.path + '/')
+
+        try:
+            return Response(self.tree.page_for_path(request.path).html, content_type='text/html')
+        except:
+            return Response("<html><body><h1>404 Page not found</h1></body></html>",
+                            content_type='text/html', status=404)
 
     def wsgi_app(self, environ, start_response):
         request = Request(environ)
@@ -25,9 +33,23 @@ class MiniblogServer(object):
         return self.wsgi_app(environ, start_response)
 
 
-def run_server(host='127.0.0.1', port=5000, server=None):
+def get_extra_files(content_folder, template_folder):
+    """
+    Get all interesting files in a certain folder that need to be watched.
+    """
+    extra_paths = [(path, files) for path, dirs, files in os.walk(content_folder) if files]
+    extra_paths.extend((path, files) for path, dirs, files in os.walk(template_folder) if files)
+    extra_files = []
+    for path, files in extra_paths:
+        for file in files:
+            extra_files.append(os.path.join(path, file))
+    return extra_files
+
+
+def run_server(content_folder, template_folder, host='127.0.0.1', port=5000, server=None):
     if server is None:
-        app = MiniblogServer()
+        app = MiniblogServer(content_folder, template_folder)
     else:
         app = server
-    run_simple(host, port, app, use_debugger=True, use_reloader=True)
+    extra_files = get_extra_files(content_folder, template_folder)
+    run_simple(host, port, app, use_debugger=True, use_reloader=True, extra_files=extra_files)

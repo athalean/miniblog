@@ -1,3 +1,4 @@
+import os
 import sys
 import argparse
 
@@ -8,8 +9,8 @@ def build():
     pass
 
 
-def serve():
-    run_server()
+def serve(folder):
+    run_server(os.path.join(folder,'content'), os.path.join(folder,'templates'))
 
 
 def create():
@@ -24,7 +25,7 @@ def run_command(args=sys.argv[1:]):
     if args.action == 'build':
         build()
     if args.action == 'serve':
-        serve()
+        serve(os.getcwd())
 
 
 if __name__ == '__main__':

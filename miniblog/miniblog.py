@@ -3,31 +3,31 @@ import re
 
 import dateutil.parser
 from jinja2 import Environment, FileSystemLoader
+import markdown
+from markupsafe import Markup
 
 
+DEFAULT_URL = '/blog/%s/'
 DEFAULT_CATEGORY = "uncategorized"
 DEFAULT_TITLE = "unknown title"
 DEFAULT_TEMPLATE = 'default.html'
 
 
-class PageTree(object):
+class SiteNamespace(object):
     """
     A tree containing several blog pages
     """
+
     def __init__(self, content_folder, template_folder):
         self.pages = {}
-        self.env = Environment(loader=FileSystemLoader(template_folder))
+        self.env = Environment(loader=FileSystemLoader(template_folder), autoescape=True)
         self.populate_by_directory(content_folder)
 
-    def populate_by_directory(self, path):
-        stack = [path]
-        while stack:
-            item = stack.pop()
-            if os.path.isdir(item):
-                stack.extend(os.path.join(item, newitem) for newitem in os.listdir(item) if
-                             not newitem.endswith('.meta'))
-                continue
-            self.add_page(Page(item, self))
+    def populate_by_directory(self, content_folder):
+        for path, dirs, files in os.walk(content_folder):
+            for file in files:
+                if not file.endswith('.meta'):
+                    self.add_page(Page(os.path.join(path, file), self))
 
     def page_for_path(self, path):
         return self.pages[path]
@@ -83,9 +83,12 @@ class PageMeta(object):
 
     def process_slug(self, slug):
         if slug is None:
-            self.slug = os.path.basename(self.page.file_path).rsplit('.',1)[0]
+            self.slug = os.path.basename(self.page.file_path).rsplit('.', 1)[0]
             return
         self.slug = slug
+
+    def process_path(self, path):
+        self.path = path
 
 
 class Page(object):
@@ -101,17 +104,21 @@ class Page(object):
         with open(self.meta_path, 'r') as f:
             self._meta = self.process_meta(f.read())
 
-        with open(self.file_path, 'r') as f:
-            self._html = self.process_raw(f.read())
-
-        self.path = '/'+self.meta.slug
+    def get_path(self):
+        """
+        Generate a path for the
+        """
+        if self.meta.path:
+            return self.meta.path
+        else:
+            return DEFAULT_URL % self.meta.slug
 
     def process_raw(self, text):
         """
         Process raw content text (e.g. Markdown) to prepare .content
         """
-        self.content = text
-        html = self.meta.template.render(page=self, content=text)
+        self.content = markdown.markdown(text, safe_mode='escape')
+        html = self.meta.template.render(page=self, content=Markup(self.content))
         return html
 
     def process_meta(self, text):
@@ -135,3 +142,9 @@ class Page(object):
         if not hasattr(self, '_html'):
             self._html = self.process_raw(open(self.file_path, 'r').read())
         return self._html
+
+    @property
+    def path(self):
+        if not hasattr(self, '_path'):
+            self._path = self.get_path()
+        return self._path
