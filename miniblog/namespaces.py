@@ -1,6 +1,6 @@
 import os
 
-CATEGORY_PATTERN = "/category/%s/"
+from settings import *
 
 
 class Pages(object):
