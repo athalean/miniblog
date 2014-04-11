@@ -1,22 +1,24 @@
+import codecs
 import os
 import re
 
 import dateutil.parser
 from jinja2 import Environment, FileSystemLoader
 import markdown
+from markdown.extensions.codehilite import CodeHilite
 from markupsafe import Markup
 
 from namespaces import Pages, Categories
+from settings import *
 
-
-DEFAULT_URL = '/blog/%s/'
-DEFAULT_TITLE = "unknown title"
-DEFAULT_TEMPLATE = 'default.html'
-
+def datetimeformat(value, format='%H:%M / %d-%m-%Y'):
+    return Markup('<time datetime="%s">%s</time>') % (value, value.strftime(format))
 
 class SiteNamespace(object):
     def __init__(self, content_folder, template_folder):
         self.env = Environment(loader=FileSystemLoader(template_folder), autoescape=True)
+        self.env.filters['datetimeformat'] = datetimeformat
+
         self.pages = Pages(content_folder, self.env)
         self.categories = Categories(self.pages, self.env)
 
@@ -98,6 +100,12 @@ class PageMeta(object):
         else:
             self.static = False
 
+    def process_menu(self, menu):
+        if menu and menu.lower() == 'true':
+            self.menu = True
+        else:
+            self.menu = False
+
 
 class Page(object):
     """
@@ -111,7 +119,8 @@ class Page(object):
 
         try:
             with open(self.meta_path, 'r') as f:
-                self._meta = self.process_meta(f.read())
+                self._meta = self.process_meta(
+                codecs.open(self.meta_path, 'r', encoding='utf-8').read())
         except IOError:
             raise ValueError("%s has no meta file." % self.file_path)
 
@@ -130,7 +139,9 @@ class Page(object):
         """
         Process raw content text (e.g. Markdown) to prepare .content
         """
-        self.content = markdown.markdown(text, safe_mode='escape')
+        extensions = ['codehilite(linenums=False)']
+        CodeHilite
+        self.content = markdown.markdown(text, safe_mode='escape', extensions=extensions)
         html = self.meta.template.render(page=self, content=Markup(self.content))
         return html
 
@@ -145,15 +156,24 @@ class Page(object):
         return PageMeta(self, metadict)
 
     @property
+    def date_as_html(self):
+        if not self.meta.date:
+            return ""
+        return Markup('<time datetime="%s">%s</time>' % (self.meta.date, self.meta.date.strftime(
+            '%d.%m.%Y')))
+
+    @property
     def meta(self):
         if not hasattr(self, '_meta'):
-            self._meta = self.process_meta(open(self.meta_path, 'r').read())
+            self._meta = self.process_meta(
+                codecs.open(self.meta_path, 'r', encoding='utf-8').read())
         return self._meta
 
     @property
     def html(self):
         if not hasattr(self, '_html'):
-            self._html = self.process_raw(open(self.file_path, 'r').read())
+            content = codecs.open(self.file_path, 'r', encoding='utf-8').read()
+            self._html = self.process_raw(content)
         return self._html
 
     @property

@@ -3,9 +3,11 @@ import os
 from werkzeug.utils import redirect
 from werkzeug.wrappers import Response, Request
 from werkzeug.serving import run_simple
+from werkzeug.wsgi import SharedDataMiddleware
 
 from miniblog import SiteNamespace
 
+from settings import *
 
 DIR = os.getcwd()
 
@@ -15,8 +17,11 @@ class MiniblogServer(object):
         self.namespace = SiteNamespace(content_folder, template_folder)
 
     def dispatch(self, request):
-        if not request.path.endswith('/'):
+        if not request.path.endswith('/') and not request.path.startswith(MEDIA_PATH):
             return redirect(request.path + '/')
+
+        if request.path.startswith('/media/'):
+            return
 
         try:
             return Response(self.namespace.dispatch(request.path), content_type='text/html')
@@ -27,6 +32,9 @@ class MiniblogServer(object):
     def wsgi_app(self, environ, start_response):
         request = Request(environ)
         response = self.dispatch(request)
+        if not response:
+            response = Response("<html><body><h1>404 Page not found</h1></body></html>",
+                                content_type='text/html', status=404)
         return response(environ, start_response)
 
     def __call__(self, environ, start_response):
@@ -46,9 +54,12 @@ def get_extra_files(content_folder, template_folder):
     return extra_files
 
 
-def run_server(content_folder, template_folder, host='127.0.0.1', port=5000, server=None):
+def run_server(content_folder, template_folder, media_folder=None, host='127.0.0.1', port=5000,
+               server=None):
     if server is None:
         app = MiniblogServer(content_folder, template_folder)
+        if media_folder:
+            app.wsgi_app = SharedDataMiddleware(app.wsgi_app, {MEDIA_PATH: media_folder})
     else:
         app = server
     extra_files = get_extra_files(content_folder, template_folder)
