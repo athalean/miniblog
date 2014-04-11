@@ -54,3 +54,6 @@ docs/_build/
 
 # PyCharm noise
 .idea
+
+# virtual environment
+env-miniblog
