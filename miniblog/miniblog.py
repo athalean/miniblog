@@ -6,37 +6,39 @@ from jinja2 import Environment, FileSystemLoader
 import markdown
 from markupsafe import Markup
 
+from namespaces import Pages, Categories
+
 
 DEFAULT_URL = '/blog/%s/'
-DEFAULT_CATEGORY = "uncategorized"
 DEFAULT_TITLE = "unknown title"
 DEFAULT_TEMPLATE = 'default.html'
 
 
 class SiteNamespace(object):
-    """
-    A tree containing several blog pages
-    """
-
     def __init__(self, content_folder, template_folder):
-        self.pages = {}
         self.env = Environment(loader=FileSystemLoader(template_folder), autoescape=True)
-        self.populate_by_directory(content_folder)
+        self.pages = Pages(content_folder, self.env)
+        self.categories = Categories(self.pages, self.env)
 
-    def populate_by_directory(self, content_folder):
-        for path, dirs, files in os.walk(content_folder):
-            for file in files:
-                if not file.endswith('.meta'):
-                    self.add_page(Page(os.path.join(path, file), self))
+        self.namespaces = (self.categories, self.pages)
+        for i in self.namespaces:
+            if hasattr(i, 'get_mixins'):
+                self.env.globals.update(i.get_mixins())
 
-    def page_for_path(self, path):
-        return self.pages[path]
+    def dispatch(self, url):
+        for i in self.namespaces:
+            p = i.dispatch(url)
+            if p is not None:
+                return p
+        raise ValueError("URL could not be dispatched")
 
-    def add_page(self, page):
-        path = page.path
-        if path in self.pages:
-            raise ValueError('Duplicate page on path %s.' % path)
-        self.pages[path] = page
+    def get_all(self):
+        """
+        Generate all possible sites in the namespace
+        """
+        for i in self.namespaces:
+            for k in i.get_all():
+                yield k
 
 
 SPLIT_REX = re.compile(r'[ ,;]')
@@ -63,7 +65,7 @@ class PageMeta(object):
         self.date = dateutil.parser.parse(date)
 
     def process_template(self, template):
-        env = self.page.tree.env
+        env = self.page.namespace.env
         if template is None:
             self.template = env.get_template(DEFAULT_TEMPLATE)
             return
@@ -77,9 +79,9 @@ class PageMeta(object):
 
     def process_category(self, category):
         if category is None:
-            self.category = DEFAULT_CATEGORY
+            self.category = None
             return
-        self.category = category.lower()
+        self.category = category
 
     def process_slug(self, slug):
         if slug is None:
@@ -90,19 +92,30 @@ class PageMeta(object):
     def process_path(self, path):
         self.path = path
 
+    def process_static(self, static):
+        if static and static.lower() == 'true':
+            self.static = True
+        else:
+            self.static = False
+
 
 class Page(object):
     """
     A miniblog page.
     """
 
-    def __init__(self, path, tree):
+    def __init__(self, path, namespace):
+        self.namespace = namespace
         self.file_path = path
-        self.tree = tree
         self.meta_path = path + ".meta"
 
-        with open(self.meta_path, 'r') as f:
-            self._meta = self.process_meta(f.read())
+        try:
+            with open(self.meta_path, 'r') as f:
+                self._meta = self.process_meta(f.read())
+        except IOError:
+            raise ValueError("%s has no meta file." % self.file_path)
+
+        self.url = self.meta.path
 
     def get_path(self):
         """
@@ -148,3 +161,8 @@ class Page(object):
         if not hasattr(self, '_path'):
             self._path = self.get_path()
         return self._path
+
+    def __repr__(self):
+        return "<miniblog.Page '%s'>" % self.meta.title
+
+

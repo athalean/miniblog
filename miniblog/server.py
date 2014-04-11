@@ -12,15 +12,15 @@ DIR = os.getcwd()
 
 class MiniblogServer(object):
     def __init__(self, content_folder, template_folder):
-        self.tree = SiteNamespace(content_folder, template_folder)
+        self.namespace = SiteNamespace(content_folder, template_folder)
 
     def dispatch(self, request):
         if not request.path.endswith('/'):
             return redirect(request.path + '/')
 
         try:
-            return Response(self.tree.page_for_path(request.path).html, content_type='text/html')
-        except:
+            return Response(self.namespace.dispatch(request.path), content_type='text/html')
+        except ValueError:
             return Response("<html><body><h1>404 Page not found</h1></body></html>",
                             content_type='text/html', status=404)
 
